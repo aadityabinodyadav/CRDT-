@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRDT Mesh — Research Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
+
+  :root {
+    --bg:       #0d0f14;
+    --surface:  #141720;
+    --border:   #232840;
+    --accent1:  #4f9cf9;   /* flood   */
+    --accent2:  #f9c74f;   /* heuristic */
+    --accent3:  #43e97b;   /* ai      */
+    --accent4:  #f97b4f;   /* aodv    */
+    --text:     #e8eaf0;
+    --muted:    #6b7080;
+    --glow:     rgba(79,156,249,.18);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 36px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  header h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent1);
+  }
+  header .subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: .08em;
+    margin-top: 2px;
+  }
+  .upload-zone {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .upload-zone label {
+    background: var(--border);
+    border: 1px solid var(--accent1);
+    color: var(--accent1);
+    padding: 8px 18px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: .06em;
+    transition: background .15s;
+  }
+  .upload-zone label:hover { background: var(--glow); }
+  #csv-input { display: none; }
+  #file-status { font-size: 11px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+
+  /* ── MAIN LAYOUT ── */
+  main { padding: 28px 36px; }
+
+  /* ── KPI STRIP ── */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .kpi.k1::before { background: var(--accent1); }
+  .kpi.k2::before { background: var(--accent2); }
+  .kpi.k3::before { background: var(--accent3); }
+  .kpi.k4::before { background: var(--accent4); }
+  .kpi .label {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-family: 'IBM Plex Mono', monospace;
+    margin-bottom: 8px;
+  }
+  .kpi .value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1;
+  }
+  .kpi .sub {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 5px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* ── CHART GRID ── */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+  }
+  .chart-card h2 {
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    margin-bottom: 16px;
+  }
+  .chart-card canvas { max-height: 240px; }
+
+  /* ── TABLE ── */
+  .table-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 24px;
+    overflow-x: auto;
+  }
+  .table-card h2 {
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    margin-bottom: 16px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead tr { border-bottom: 1px solid var(--border); }
+  th {
+    text-align: left;
+    font-size: 10px;
+    letter-spacing: .08em;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+  td {
+    padding: 7px 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    border-bottom: 1px solid #1a1e2b;
+    white-space: nowrap;
+  }
+  tr:hover td { background: #191d2a; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .05em;
+  }
+  .badge-flood     { background: rgba(79,156,249,.15); color: var(--accent1); }
+  .badge-heuristic { background: rgba(249,199,79,.15); color: var(--accent2); }
+  .badge-ai        { background: rgba(67,233,123,.15); color: var(--accent3); }
+  .badge-aodv      { background: rgba(249,123,79,.15); color: var(--accent4); }
+
+  /* ── DEMO BANNER ── */
+  .demo-banner {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+  .demo-banner .icon { font-size: 36px; margin-bottom: 12px; }
+  .demo-banner p { font-size: 13px; line-height: 1.7; max-width: 440px; margin: 0 auto; }
+  .demo-banner code {
+    background: var(--border);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--accent1);
+  }
+
+  /* ── LEGEND ── */
+  .legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── FILTER BAR ── */
+  .filter-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 22px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .filter-bar label { font-size: 11px; color: var(--muted); }
+  .filter-bar select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    outline: none;
+    cursor: pointer;
+  }
+  .filter-bar select:focus { border-color: var(--accent1); }
+
+  /* animations */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .kpi, .chart-card, .table-card {
+    animation: fadeUp .35s ease both;
+  }
+  .kpi:nth-child(1) { animation-delay: .05s; }
+  .kpi:nth-child(2) { animation-delay: .10s; }
+  .kpi:nth-child(3) { animation-delay: .15s; }
+  .kpi:nth-child(4) { animation-delay: .20s; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>CRDT Mesh — Research Dashboard</h1>
+    <div class="subtitle">Flood · Heuristic · AI-Assisted · AODV  /  Simulation Results Viewer</div>
+  </div>
+  <div class="upload-zone">
+    <label for="csv-input">⬆ Load CSV</label>
+    <input type="file" id="csv-input" accept=".csv">
+    <span id="file-status">no file loaded</span>
+  </div>
+</header>
+
+<main id="main-content">
+  <div class="demo-banner">
+    <div class="icon">📡</div>
+    <p>
+      Load a <code>simulation_results.csv</code> produced by the runner<br>
+      (<code>python -m experiments.runner</code> or <code>python main.py --skip-docker</code>)<br>
+      to visualise PDR, latency, energy, and overhead across all protocols.
+    </p>
+  </div>
+</main>
+
+<script>
+// ── Colour map ──────────────────────────────────────────────────────────────
+const COLORS = {
+  flood:     { bg: 'rgba(79,156,249,.25)', border: '#4f9cf9' },
+  heuristic: { bg: 'rgba(249,199,79,.25)', border: '#f9c74f' },
+  ai:        { bg: 'rgba(67,233,123,.25)', border: '#43e97b' },
+  aodv:      { bg: 'rgba(249,123,79,.25)', border: '#f97b4f' },
+};
+const MODE_ORDER = ['flood', 'heuristic', 'ai', 'aodv'];
+
+function modeColor(m) {
+  return COLORS[m] || { bg: 'rgba(180,180,180,.2)', border: '#aaa' };
+}
+
+// ── CSV load ────────────────────────────────────────────────────────────────
+document.getElementById('csv-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('file-status').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const parsed = Papa.parse(ev.target.result, { header: true, dynamicTyping: true, skipEmptyLines: true });
+    renderDashboard(parsed.data);
+  };
+  reader.readAsText(file);
+});
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function mean(arr) {
+  if (!arr.length) return 0;
+  return arr.reduce((s, v) => s + v, 0) / arr.length;
+}
+function groupBy(data, key) {
+  return data.reduce((acc, row) => {
+    const k = row[key] ?? 'unknown';
+    (acc[k] = acc[k] || []).push(row);
+    return acc;
+  }, {});
+}
+function fmtNum(v, decimals = 3) {
+  if (v == null || isNaN(v)) return '—';
+  return Number(v).toFixed(decimals);
+}
+
+// ── Chart defaults ───────────────────────────────────────────────────────────
+Chart.defaults.color = '#6b7080';
+Chart.defaults.borderColor = '#232840';
+Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+Chart.defaults.font.size = 11;
+
+let _charts = [];
+function destroyCharts() { _charts.forEach(c => c.destroy()); _charts = []; }
+
+function makeBarChart(canvasId, labels, datasets, yLabel) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { mode: 'index', intersect: false },
+      },
+      scales: {
+        x: { grid: { color: '#1a1e2b' }, ticks: { maxRotation: 35, minRotation: 25 } },
+        y: { grid: { color: '#1a1e2b' }, title: { display: true, text: yLabel, color: '#6b7080' } },
+      },
+    },
+  });
+  _charts.push(chart);
+}
+
+function makeRadarChart(canvasId, labels, modeData) {
+  const datasets = MODE_ORDER
+    .filter(m => modeData[m])
+    .map(m => ({
+      label: m,
+      data: modeData[m],
+      backgroundColor: modeColor(m).bg,
+      borderColor: modeColor(m).border,
+      borderWidth: 2,
+      pointBackgroundColor: modeColor(m).border,
+    }));
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'radar',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+      },
+      scales: {
+        r: {
+          grid: { color: '#232840' },
+          ticks: { backdropColor: 'transparent', color: '#6b7080', stepSize: 0.2 },
+          pointLabels: { color: '#9aa0b0', font: { size: 10 } },
+          min: 0, max: 1,
+        },
+      },
+    },
+  });
+  _charts.push(chart);
+}
+
+// ── Main render ──────────────────────────────────────────────────────────────
+function renderDashboard(data) {
+  destroyCharts();
+
+  const byMode = groupBy(data, 'forwarding');
+  const modes = MODE_ORDER.filter(m => byMode[m]);
+  const scenarios = [...new Set(data.map(r => r.scenario).filter(Boolean))].sort();
+
+  // ── KPIs (means across all rows per best mode by PDR) ──
+  const kpiMode = modes.reduce((best, m) =>
+    mean((byMode[m] || []).map(r => r.pdr)) > mean((byMode[best] || []).map(r => r.pdr)) ? m : best
+  , modes[0]);
+
+  const allPDR    = data.map(r => r.pdr).filter(v => v != null);
+  const allLat    = data.map(r => r.latency_median).filter(v => v != null);
+  const allEnergy = data.map(r => r.energy_mean).filter(v => v != null);
+  const allOH     = data.map(r => r.total_overhead).filter(v => v != null);
+
+  const kpis = [
+    { label: 'Mean PDR',         value: fmtNum(mean(allPDR), 3),    sub: 'packet delivery ratio', cls: 'k1' },
+    { label: 'Median Latency',   value: fmtNum(mean(allLat), 3)+'s',sub: 'end-to-end (median)',   cls: 'k2' },
+    { label: 'Mean Energy',      value: fmtNum(mean(allEnergy), 1)+'J', sub: 'per node avg',      cls: 'k3' },
+    { label: 'Total Overhead',   value: fmtNum(mean(allOH), 3),     sub: 'ctrl+dup / data ratio', cls: 'k4' },
+  ];
+
+  // ── Scenario labels for bar charts ──
+  const scenarioLabels = scenarios.length ? scenarios : modes;
+
+  function scenarioMeanByMode(metric) {
+    // For each scenario, compute per-mode means
+    return {
+      labels: scenarios,
+      datasets: modes.map(m => {
+        const c = modeColor(m);
+        return {
+          label: m,
+          data: scenarios.map(sc => {
+            const rows = (byMode[m] || []).filter(r => r.scenario === sc);
+            return rows.length ? mean(rows.map(r => r[metric]).filter(v => v != null)) : null;
+          }),
+          backgroundColor: c.bg,
+          borderColor: c.border,
+          borderWidth: 1.5,
+          borderRadius: 2,
+        };
+      }),
+    };
+  }
+
+  // ── Legend HTML ──
+  const legendHTML = modes.map(m => {
+    const c = modeColor(m);
+    return `<div class="legend-item">
+      <div class="legend-dot" style="background:${c.border}"></div>${m}
+    </div>`;
+  }).join('');
+
+  // ── Radar: normalised means per mode ──
+  const radarMetrics = ['pdr', 'latency_median', 'energy_mean', 'total_overhead'];
+  const radarLabels  = ['PDR', 'Latency (inv)', 'Energy (inv)', 'Overhead (inv)'];
+  // Normalise 0-1; for latency/energy/overhead lower = better so invert
+  function normRange(vals) {
+    const mn = Math.min(...vals), mx = Math.max(...vals);
+    if (mx === mn) return vals.map(() => 0.5);
+    return vals.map(v => (v - mn) / (mx - mn));
+  }
+  const radarData = {};
+  const metricMeans = radarMetrics.map(m =>
+    modes.map(mode => mean((byMode[mode] || []).map(r => r[m]).filter(v => v != null)))
+  );
+  const normed = metricMeans.map(vals => normRange(vals));
+  modes.forEach((mode, mi) => {
+    radarData[mode] = radarMetrics.map((_, ri) => {
+      const v = normed[ri][mi];
+      // invert latency, energy, overhead (index 1,2,3)
+      return ri === 0 ? v : 1 - v;
+    });
+  });
+
+  // ── Table rows ──
+  const tableModes = modes;
+  const tableRows = tableModes.map(m => {
+    const rows = byMode[m] || [];
+    const n = rows.length;
+    return {
+      mode: m,
+      n,
+      pdr:      fmtNum(mean(rows.map(r => r.pdr).filter(v => v!=null)), 4),
+      lat:      fmtNum(mean(rows.map(r => r.latency_median).filter(v => v!=null)), 4),
+      lat_p95:  fmtNum(mean(rows.map(r => r.latency_p95).filter(v => v!=null)), 4),
+      energy:   fmtNum(mean(rows.map(r => r.energy_mean).filter(v => v!=null)), 2),
+      overhead: fmtNum(mean(rows.map(r => r.total_overhead).filter(v => v!=null)), 4),
+      dup:      fmtNum(mean(rows.map(r => r.duplicate_ratio).filter(v => v!=null)), 4),
+    };
+  });
+
+  const pdrData    = scenarioMeanByMode('pdr');
+  const latData    = scenarioMeanByMode('latency_median');
+  const energyData = scenarioMeanByMode('energy_mean');
+  const ohData     = scenarioMeanByMode('total_overhead');
+
+  // ── Render HTML ──
+  document.getElementById('main-content').innerHTML = `
+    <div class="kpi-strip">
+      ${kpis.map(k => `
+        <div class="kpi ${k.cls}">
+          <div class="label">${k.label}</div>
+          <div class="value">${k.value}</div>
+          <div class="sub">${k.sub}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="legend">${legendHTML}</div>
+
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h2>Packet Delivery Ratio  ↑ higher is better</h2>
+        <canvas id="chart-pdr"></canvas>
+      </div>
+      <div class="chart-card">
+        <h2>Median End-to-End Latency  ↓ lower is better</h2>
+        <canvas id="chart-lat"></canvas>
+      </div>
+      <div class="chart-card">
+        <h2>Mean Energy per Node (J)  ↓ lower is better</h2>
+        <canvas id="chart-energy"></canvas>
+      </div>
+      <div class="chart-card">
+        <h2>Control + Duplicate Overhead  ↓ lower is better</h2>
+        <canvas id="chart-overhead"></canvas>
+      </div>
+    </div>
+
+    <div class="charts-grid" style="grid-template-columns:1fr 1fr;margin-bottom:24px">
+      <div class="chart-card">
+        <h2>Protocol Radar  (normalised, higher = better on all axes)</h2>
+        <canvas id="chart-radar"></canvas>
+      </div>
+      <div class="chart-card">
+        <h2>PDR per Scenario</h2>
+        <canvas id="chart-pdr2"></canvas>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <h2>Aggregated Results  (mean across all scenarios &amp; seeds)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Protocol</th><th>Runs</th>
+            <th>PDR</th><th>Latency Med (s)</th><th>Latency P95 (s)</th>
+            <th>Energy (J)</th><th>Overhead</th><th>Dup Ratio</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows.map(r => `
+            <tr>
+              <td><span class="badge badge-${r.mode}">${r.mode}</span></td>
+              <td>${r.n}</td>
+              <td>${r.pdr}</td><td>${r.lat}</td><td>${r.lat_p95}</td>
+              <td>${r.energy}</td><td>${r.overhead}</td><td>${r.dup}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  // Charts
+  makeBarChart('chart-pdr',      pdrData.labels,    pdrData.datasets,    'PDR');
+  makeBarChart('chart-lat',      latData.labels,    latData.datasets,    'Latency (s)');
+  makeBarChart('chart-energy',   energyData.labels, energyData.datasets, 'Energy (J)');
+  makeBarChart('chart-overhead', ohData.labels,     ohData.datasets,     'Overhead ratio');
+  makeRadarChart('chart-radar', radarLabels, radarData);
+  makeBarChart('chart-pdr2',     pdrData.labels,    pdrData.datasets,    'PDR');
+}
+</script>
+</body>
+</html>

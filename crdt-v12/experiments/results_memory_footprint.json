@@ -1,0 +1,25 @@
+{
+  "struct_sizes": {
+    "MessageId": 22,
+    "Message": 62,
+    "NeighborEntry": 24,
+    "HLC": 16
+  },
+  "ram_budget": {
+    "msg_buffer_bytes": 6016,
+    "neighbor_table_bytes": 480,
+    "total_bytes": 7024,
+    "total_kb": 6.9,
+    "esp32_sram_kb": 320,
+    "footprint_pct": 2.1
+  },
+  "wire_sizes": {
+    "HELLO beacon": 34,
+    "DATA packet": 60,
+    "SYNC/ACK": 10
+  },
+  "sim_state": {
+    "messages_after_60s": 209,
+    "nodes": 20
+  }
+}

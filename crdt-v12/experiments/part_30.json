@@ -1,0 +1,28 @@
+{
+  "30": {
+    "flood": {
+      "recovery": 100.0,
+      "pdr": [
+        100.0,
+        0.0
+      ],
+      "recovery_time_s": 1.27
+    },
+    "heuristic": {
+      "recovery": 100.0,
+      "pdr": [
+        100.0,
+        0.0
+      ],
+      "recovery_time_s": 0.8
+    },
+    "adaptive": {
+      "recovery": 100.0,
+      "pdr": [
+        99.6,
+        0.3
+      ],
+      "recovery_time_s": 0.3
+    }
+  }
+}
